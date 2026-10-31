@@ -183,6 +183,29 @@
     s.addEventListener('dragstart', (e) => e.preventDefault());
   });
 
+  /* ---------- gallery arrows ---------- */
+  $$('.strip-wrap').forEach((w) => {
+    const s = $('.strip', w);
+    const ctrl = document.createElement('div');
+    ctrl.className = 'strip-ctrl';
+    ctrl.innerHTML = '<button type="button" aria-label="Previous images">←</button><button type="button" aria-label="Next images">→</button>';
+    w.appendChild(ctrl);
+    const [prev, next] = $$('button', ctrl);
+    const go = (dir) => s.scrollBy({ left: dir * s.clientWidth * 0.75, behavior: reduce ? 'auto' : 'smooth' });
+    prev.addEventListener('click', () => go(-1));
+    next.addEventListener('click', () => go(1));
+    const update = () => {
+      const max = s.scrollWidth - s.clientWidth;
+      ctrl.hidden = max < 8;
+      prev.disabled = s.scrollLeft < 4;
+      next.disabled = s.scrollLeft > max - 4;
+    };
+    s.addEventListener('scroll', update, { passive: true });
+    addEventListener('resize', update);
+    $$('img', s).forEach((i) => i.addEventListener('load', update));
+    update();
+  });
+
   /* ---------- lightbox ---------- */
   const lb = $('#lb');
   const lbImg = $('img', lb);
