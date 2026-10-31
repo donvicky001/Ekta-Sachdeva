@@ -83,6 +83,27 @@
     requestAnimationFrame(step);
   };
 
+  /* ---------- split titles into words for staggered reveal ---------- */
+  if (!reduce) {
+    let wi = 0;
+    const wrapWords = (node) => {
+      [...node.childNodes].forEach((n) => {
+        if (n.nodeType === 3) {
+          const frag = document.createDocumentFragment();
+          n.textContent.split(/(\s+)/).forEach((part) => {
+            if (!part) return;
+            if (/^\s+$/.test(part)) { frag.appendChild(document.createTextNode(part)); return; }
+            const w = document.createElement('span'); w.className = 'w';
+            const i = document.createElement('span'); i.className = 'wi'; i.style.setProperty('--wi', wi++);
+            i.textContent = part; w.appendChild(i); frag.appendChild(w);
+          });
+          n.replaceWith(frag);
+        } else if (n.nodeType === 1) wrapWords(n);
+      });
+    };
+    $$('.split').forEach((t) => { wi = 0; t.setAttribute('aria-label', t.textContent.replace(/\s+/g, ' ').trim()); wrapWords(t); });
+  }
+
   /* ---------- reveal on scroll ---------- */
   const revealObs = new IntersectionObserver((entries) => {
     entries.forEach((en) => {
@@ -120,13 +141,13 @@
   });
   segs.forEach((c) => {
     const li = $(`.legend li[data-seg="${c.dataset.seg}"]`);
-    c.addEventListener('mouseenter', () => { donut.classList.add('dim'); c.classList.add('act'); li.style.background = 'rgba(243,236,226,.05)'; });
+    c.addEventListener('mouseenter', () => { donut.classList.add('dim'); c.classList.add('act'); li.style.background = 'rgba(31,26,29,.05)'; });
     c.addEventListener('mouseleave', () => { donut.classList.remove('dim'); c.classList.remove('act'); li.style.background = ''; });
   });
 
   /* ---------- spotlight cards ---------- */
   if (fine) {
-    $$('.spot').forEach((el) => {
+    $$('.spot, .tile').forEach((el) => {
       el.addEventListener('pointermove', (e) => {
         const r = el.getBoundingClientRect();
         el.style.setProperty('--mx', `${e.clientX - r.left}px`);
@@ -182,6 +203,95 @@
     s.addEventListener('click', (e) => { if (moved > 5) { e.preventDefault(); e.stopPropagation(); } }, true);
     s.addEventListener('dragstart', (e) => e.preventDefault());
   });
+
+  $$('.tile b').forEach((b) => { if (b.textContent.trim().length > 6) b.classList.add('long'); });
+
+  /* ---------- number tabs ---------- */
+  const tabs = $$('.tabs [role="tab"]');
+  const ind = $('.tab-ind');
+  const placeInd = () => {
+    const t = tabs.find((b) => b.getAttribute('aria-selected') === 'true');
+    if (!t || !ind) return;
+    ind.style.width = t.offsetWidth + 'px';
+    ind.style.transform = `translateX(${t.offsetLeft - 5}px)`;
+  };
+  const selectTab = (t, focus) => {
+    tabs.forEach((b) => {
+      const on = b === t;
+      b.setAttribute('aria-selected', on);
+      b.tabIndex = on ? 0 : -1;
+      const panel = $('#' + b.getAttribute('aria-controls'));
+      panel.hidden = !on;
+      if (on) {
+        panel.classList.remove('anim'); void panel.offsetWidth; panel.classList.add('anim');
+        $('.tiles', panel).classList.add('in');
+        $$('[data-count]', panel).forEach(countUp);
+      }
+    });
+    placeInd();
+    if (focus) t.focus();
+  };
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => selectTab(t));
+    t.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        selectTab(tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length], true);
+      }
+    });
+  });
+  placeInd();
+  addEventListener('resize', placeInd);
+  if (document.fonts) document.fonts.ready.then(placeInd);
+
+  /* ---------- about: words light up as you scroll ---------- */
+  $$('.words').forEach((p) => {
+    if (reduce) return;
+    const words = p.textContent.trim().split(/\s+/);
+    p.innerHTML = words.map((w) => `<span class="wd">${w}</span>`).join(' ');
+    const spans = $$('.wd', p);
+    const update = () => {
+      const r = p.getBoundingClientRect();
+      const start = innerHeight * 0.85, end = innerHeight * 0.35;
+      const prog = Math.min(1, Math.max(0, (start - r.top) / (start - end + r.height * 0.6)));
+      const n = Math.round(prog * spans.length);
+      spans.forEach((s, i) => s.classList.toggle('on', i < n));
+    };
+    addEventListener('scroll', () => requestAnimationFrame(update), { passive: true });
+    update();
+  });
+
+  /* ---------- hero blobs follow the mouse ---------- */
+  if (fine && !reduce) {
+    const blobs = $$('.blob');
+    addEventListener('pointermove', (e) => {
+      if (scrollY > innerHeight) return;
+      const dx = e.clientX / innerWidth - 0.5, dy = e.clientY / innerHeight - 0.5;
+      blobs.forEach((b) => { const d = +b.dataset.depth; b.style.transform = `translate(${dx * d * 2}px, ${dy * d * 2}px)`; });
+    }, { passive: true });
+  }
+
+  /* ---------- custom cursor ---------- */
+  const cur = $('.cursor');
+  if (fine && !reduce && cur) {
+    let x = innerWidth / 2, y = innerHeight / 2, cx = x, cy = y;
+    addEventListener('pointermove', (e) => {
+      x = e.clientX; y = e.clientY;
+      document.documentElement.classList.add('has-cursor');
+      const t = e.target;
+      cur.classList.toggle('view', !!t.closest('.shot, .pf'));
+      cur.classList.toggle('link', !t.closest('.shot, .pf') && !!t.closest('a, button, .tile, .sector, [role="tab"]'));
+    }, { passive: true });
+    document.addEventListener('pointerleave', () => document.documentElement.classList.remove('has-cursor'));
+    addEventListener('pointerdown', () => cur.classList.add('down'));
+    addEventListener('pointerup', () => cur.classList.remove('down'));
+    const loop = () => {
+      cx += (x - cx) * 0.2; cy += (y - cy) * 0.2;
+      cur.style.transform = `translate(${cx}px, ${cy}px)`;
+      requestAnimationFrame(loop);
+    };
+    loop();
+  }
 
   /* ---------- gallery arrows ---------- */
   $$('.strip-wrap').forEach((w) => {
